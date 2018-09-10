@@ -1,0 +1,21 @@
+Create a simple Office Management System.
+
+Employee Registration with User name, First name, Last name, email, password, date-of-birth, date-of-joining,etc.
+Add Profile Image.
+Validations :
+Password should not contain username.
+for ex. if username is “ABC”, then password must not include “ABC” or “abc”.
+Username, First name, Last name, etc.. must be characters.
+Email validation using regular expression.
+
+Employee Login with username & password.
+Login with username/email & password.
+
+Employee Dashboard where user can see his information.
+Display last logged in time.
+Display time since employee joining the office.
+
+Notes : 
+You can use internet to find code samples. Ex. Code to connect to mysql and retrieve data. validation code.
+Complete the task perfectly as fast as you can.
+
