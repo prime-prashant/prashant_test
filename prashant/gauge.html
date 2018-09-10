@@ -1,0 +1,460 @@
+<!DOCTYPE html>	
+<html>
+
+<title>Gauge Chart</title>
+<head>
+    <meta charset="utf-8">
+	<meta name="viewport" content="width=320" />
+	<meta name="apple-mobile-web-app-capable" content="yes" />
+	<title>Gauge</title>
+	<script type="text/javascript" src="http://d3js.org/d3.v2.min.js"></script>
+	<style>
+	body {
+		font-family:  Helvetica, Arial, sans-serif;
+		margin: 32px;
+	}
+
+	#power-gauge g.arc {
+		fill: steelblue;
+	}
+
+	#power-gauge g.pointer {
+		fill: #e85116;
+		stroke: #b64011;
+	}
+	#power-gauge g.pointer1 {
+		fill: #aaaaaa;
+		stroke: #bbbbbb;
+	}
+	
+	#power-gauge g.label text {
+		text-anchor: middle;
+		font-size: 14px;
+		
+		font-weight: bold;
+		fill: #666;
+	}
+	</style>
+</head>
+<body>
+<div id="power-gauge"></div>
+	
+<script>
+var gauge = function(container, configuration) {
+	var that = {};
+	var config = {
+		size						: 200,
+		clipWidth					: 800,
+		clipHeight					: 800,
+		ringInset					: 220,
+		ringWidth					: 20,
+		
+		pointerWidth				: 200,
+		pointerTailLength			: 5,
+		pointerHeadLengthPercent	: 0.05,
+		
+		minValue					: 0,
+		maxValue					: 220,
+		
+		minAngle					: 0,
+		maxAngle					: 360,
+		
+		transitionMs				: 750,
+		
+		majorTicks					: 12,
+		labelFormat					: d3.format(',g'),
+		labelInset					: 0,
+		
+		arcColorFn					: d3.interpolateRgb(d3.rgb('green'), d3.rgb('lightblue'))
+	};
+	var range = undefined;
+	var r = undefined;
+	var value = 0;
+	var pointerHeadLength = undefined;
+	var svg = undefined;
+	var arc = undefined;
+	var scale = undefined;
+	var ticks = undefined;
+	var tickData = undefined;
+	var pointer = undefined;
+
+	var donut = d3.layout.pie();
+	
+	function deg2rad(deg) {
+		return deg * Math.PI / 180;
+	}
+	
+	function newAngle(d) {
+		var ratio = scale(d);
+		var newAngle = config.minAngle + (ratio * range);
+		return newAngle;
+	}
+	
+	function configure(configuration) {
+		var prop = undefined;
+		for ( prop in configuration ) {
+			config[prop] = configuration[prop];
+		}
+		
+		range = config.maxAngle - config.minAngle;
+		r = config.size / 2;
+		pointerHeadLength = Math.round(r * config.pointerHeadLengthPercent);
+
+		// a linear scale that maps domain values to a percent from 0..1
+		scale = d3.scale.linear()
+			.range([0,1])
+			.domain([config.minValue, config.maxValue]);
+			
+		ticks = scale.ticks(config.majorTicks);
+		tickData = d3.range(config.majorTicks).map(function() {return 1/config.majorTicks;});
+		
+		arc = d3.svg.arc()
+			.innerRadius(r - config.ringWidth - config.ringInset)
+			.outerRadius(r - config.ringInset)
+			.startAngle(function(d, i) {
+				var ratio = d * i;
+				return deg2rad(config.minAngle + (ratio * range));
+			})
+			.endAngle(function(d, i) {
+				var ratio = d * (i+1);
+				return deg2rad(config.minAngle + (ratio * range));
+			});
+	}
+	that.configure = configure;
+	
+	function centerTranslation() {
+		return 'translate('+r +','+ r +')';
+	}
+	
+	function isRendered() {
+		return (svg !== undefined);
+	}
+	that.isRendered = isRendered;
+	  
+	function render(newValue) {
+		svg = d3.select(container)
+			.append('svg:svg')
+				.attr('class', 'gauge')
+								.attr('style', 'padding-top:150px; padding-left:150px;')
+
+				.attr('width', config.clipWidth+50)
+				.attr('height', config.clipHeight+50);
+		
+		var centerTx = centerTranslation();
+		
+		var arcs = svg.append('g')
+				.attr('class', 'arc')
+				.attr('transform', centerTx);
+		
+		arcs.selectAll('path')
+				.data(tickData)
+			.enter().append('path')
+				.attr('fill', function(d, i) {
+					return config.arcColorFn(d * i);
+				})
+				.attr('d', arc);
+		
+		var lg = svg.append('g')
+				.attr('class', 'label')
+				.attr('transform', centerTx);
+		lg.selectAll('text')
+				.data(ticks)
+			.enter().append('text')
+				.attr('transform', function(d) {
+					var ratio = scale(d);
+					var newAngle = config.minAngle + (ratio * range);
+					return 'rotate(' +newAngle +') translate(0,' +(config.labelInset - r) +')';
+				})
+				.text(config.labelFormat);
+
+		var lineData = [ [config.pointerWidth / 2, 0], 
+						[0, -pointerHeadLength],
+						[-(config.pointerWidth / 2), 0],
+						[0, config.pointerTailLength],
+						[config.pointerWidth / 2, 0] ];
+		var pointerLine = d3.svg.line().interpolate('monotone');
+		var pg = svg.append('g').data([lineData])
+				.attr('class', 'pointer')
+				.attr('transform', centerTx);
+				
+		pointer = pg.append('path')
+			.attr('d', pointerLine/*function(d) { return pointerLine(d) +'Z';}*/ )
+			.attr('transform', 'rotate(' +config.minAngle +')');
+
+
+				
+		update(newValue === undefined ? 0 : newValue);
+	}
+	that.render = render;
+	
+	function update(newValue, newConfiguration) {
+		if ( newConfiguration  !== undefined) {
+			configure(newConfiguration);
+		}
+		var ratio = scale(newValue);
+		var newAngle = config.minAngle + (ratio * range);
+		pointer.transition()
+			.duration(config.transitionMs)
+			.ease('elastic')
+			.attr('transform', 'rotate(' +newAngle +')');
+	}
+	that.update = update;
+
+	configure(configuration);
+	
+	return that;
+};
+</script>
+
+<script>
+function onDocumentReady() {
+	var powerGauge = gauge('#power-gauge', {
+		size: 200,
+		clipWidth: 300,
+		clipHeight: 300,
+		ringWidth: 10,
+		minValue: 0,
+		maxValue: 12,
+		transitionMs: 4000,
+	});
+	powerGauge.render();
+	
+	function updateReadings() {
+		// just pump in random data here...
+		powerGauge.update(Math.random() * 5);
+	}
+	
+	// every few seconds update reading values
+	updateReadings();
+	setInterval(function() {
+		updateReadings();
+	}, 5 * 1000);
+}
+
+if ( !window.isLoaded ) {
+	window.addEventListener("load", function() {
+		onDocumentReady();
+	}, false);
+} else {
+	onDocumentReady();
+}
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div id="power-gauge1"></div>
+	
+<script>
+var gauge1 = function(container, configuration) {
+	var that = {};
+	var config = {
+		size						: 200,
+		clipWidth1					: 800,
+		clipHeight1					: 800,
+		ringInset1					: 220,
+		ringWidth1					: 20,
+		
+		pointerWidth1				: 10,
+		pointerTailLength1			: 20,
+		pointerHeadLengthPercent1	: 0.9,
+		
+		minValue1					: 0,
+		maxValue1					: 220,
+		
+		minAngle1					: 0,
+		maxAngle1					: 360,
+		
+		transitionMs1				: 750,
+		
+		majorTicks1					: 30,
+		labelFormat1					: d3.format(',g'),
+		labelInset1					: 0,
+		
+		arcColorFn1					: d3.interpolateRgb(d3.rgb('green'), d3.rgb('lightblue'))
+	};
+
+	var range1 = undefined;
+	var r1 = undefined;
+	var value1 = 0;
+	var pointerHeadLength1 = undefined;
+	var svg1 = undefined;
+	var arc1 = undefined;
+	var scale1 = undefined;
+	var ticks1 = undefined;
+	var tickData1 = undefined;
+	var pointer1 = undefined; 
+
+	var donut1 = d3.layout.pie();
+	
+	function deg2rad1(deg1) {
+		return deg1 * Math.PI / 180;
+	}
+	
+	function newAngle1(d1) {
+		var ratio1 = scale(d1);
+		var newAngle1 = config.minAngle1 + (ratio1 * range1);
+		return newAngle1;
+	}
+	
+	function configure1(configuration1) {
+		var prop1 = undefined;
+		for ( prop1 in configuration1 ) {
+			config[prop1] = configuration1[prop1];
+		}
+		
+		range1 = config.maxAngle1 - config.minAngle1;
+		r1 = config.size1 / 2;
+		pointerHeadLength1 = Math.round(r * config.pointerHeadLengthPercent1);
+
+		// a linear scale that maps domain values to a percent from 0..1
+		scale1 = d3.scale.linear()
+			.range([0,1])
+			.domain([config.minValue1, config.maxValue1]);
+			
+		ticks1 = scale.ticks(config.majorTicks1);
+		tickData1 = d3.range(config.majorTicks1).map(function() {return 1/config.majorTicks1;});
+		
+		arc1 = d3.svg.arc()
+			.innerRadius(r - config.ringWidth1 - config.ringInset1)
+			.outerRadius(r - config.ringInset1)
+			.startAngle(function(d1, i1) {
+				var ratio1 = d1 * i1;
+				return deg2rad1(config.minAngle1 + (ratio1 * range1));
+			})
+			.endAngle(function(d1, i1) {
+				var ratio1 = d1 * (i1+1);
+				return deg2rad1(config.minAngle1 + (ratio1 * range1));
+			});
+	}
+	that.configure1 = configure1;
+	
+	function centerTranslation1() {
+		return 'translate1('+r +','+ r +')';
+	}
+	
+	function isRendered1() {
+		return (svg1 !== undefined);
+	}
+	that.isRendered1 = isRendered1;
+	function render1(newValue1) {
+		svg1 = d3.select(container1)
+			.append('svg:svg')
+				.attr('class', 'gauge1')
+				.attr('style', 'padding-top:150px; padding-left:150px;')
+				.attr('width', config.clipWidth1+50)
+				.attr('height', config.clipHeight1+50);
+		
+		var centerTx1 = centerTranslation1();
+		
+		var arcs1 = svg1.append('g')
+				.attr('class', 'arc')
+				.attr('transform1', centerTx1);
+		
+		arcs1.selectAll('path1')
+				.data(tickData1)
+			.enter().append('path1')
+				.attr('fill', function(d1, i1) {
+					return config.arcColorFn(d1 * i1);
+				})
+				.attr('d', arc);
+		
+		var lg1 = svg1.append('g')
+				.attr('class', 'label1')
+				.attr('transform1', centerTx1);
+		lg.selectAll('text')
+				.data(ticks1)
+			.enter().append('text')
+				.attr('transform1', function(d) {
+					var ratio1 = scale(d);
+					var newAngle1 = config.minAngle1 + (ratio1 * range1);
+					return 'rotate(' +newAngle1 +') translate(0,' +(config.labelInset1 - r1) +')';
+				})
+				.text(config.labelFormat1);
+
+		var lineData1 = [ [config.pointerWidth1 / 2, 0], 
+						[0, -pointerHeadLength1],
+						[-(config.pointerWidth1 / 2), 0],
+						[0, config.pointerTailLength1],
+						[config.pointerWidth1 / 2, 0] ];
+		var pointerLine1 = d3.svg1.line().interpolate('monotone');
+		var pg1 = svg1.append('g').data([lineData1])
+				.attr('class', 'pointer')
+				.attr('transform', centerTx1);
+				
+		pointer1 = pg1.append('path')
+			.attr('d', pointerLine1/*function(d) { return pointerLine(d) +'Z';}*/ )
+			.attr('transform', 'rotate(' +config.minAngle1 +')');
+
+		update(newValue1 === undefined ? 0 : newValue1);
+	}
+	that.render1 = render1;
+	
+	function update(newValue1, newConfiguration1) {
+		if ( newConfiguration1  !== undefined) {
+			configure(newConfiguration1);
+		}
+		var ratio1 = scale(newValue1);
+		var newAngle1 = config.minAngle1 + (ratio1 * range1);
+		pointer1.transition()
+			.duration(config.transitionMs1)
+			.ease('elastic')
+			.attr('transform', 'rotate(' +newAngle1 +')');
+	}
+	that.update1 = update1;
+
+	configure(configuration1);
+	
+	return that;
+};
+</script>
+
+<script>
+function onDocumentReady1() {
+	var powerGauge1 = gauge1('#power-gauge', {
+		size1: 200,
+		clipWidth1: 300,
+		clipHeight1: 300,
+		ringWidth1: 10,
+		minValue1: 0,
+		maxValue1: 30,
+		transitionMs1: 4000,
+	});
+	powerGauge1.render1();
+	
+	function updateReadings1() {
+		// just pump in random data here...
+		powerGauge1.update(Math.random() * 5);
+	}
+	
+	// every few seconds update reading values
+	updateReadings1();
+	setInterval(function() {
+		updateReadings1();
+	}, 5 * 1000);
+}
+
+
+	onDocumentReady();
+</script>
+</body>
+</html>
